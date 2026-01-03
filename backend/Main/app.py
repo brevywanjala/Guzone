@@ -49,7 +49,12 @@ def create_app(config_name='development'):
     # CORS configuration - allow credentials (cookies) from frontend
     CORS(app, 
          supports_credentials=True,
-         origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:8080"],  # Add your frontend URLs
+         origins=[
+             "http://localhost:5173", 
+             "http://localhost:3000", 
+             "http://localhost:8080",
+             "https://guzone.vercel.app"
+         ],  # Add your frontend URLs
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          automatic_options=True)  # Automatically handle OPTIONS requests

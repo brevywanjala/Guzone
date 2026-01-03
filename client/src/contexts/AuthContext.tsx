@@ -16,6 +16,7 @@ interface AuthContextType {
   googleAuth: (token: string) => Promise<{ user: User; isNewUser: boolean }>;
   logout: () => void;
   isAuthenticated: boolean;
+  isLoading: boolean; // Track if we're still loading auth state from localStorage
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,15 +24,25 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // Start with loading = true
 
   // Load token from localStorage on mount
   useEffect(() => {
     const storedToken = localStorage.getItem("access_token");
     const storedUser = localStorage.getItem("user");
     if (storedToken && storedUser) {
-      setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setToken(storedToken);
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("Error parsing stored user data:", error);
+        // Clear invalid data
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("user");
+      }
     }
+    // Mark loading as complete after checking localStorage
+    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -160,6 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         googleAuth,
         logout,
         isAuthenticated: !!user && !!token,
+        isLoading,
       }}
     >
       {children}

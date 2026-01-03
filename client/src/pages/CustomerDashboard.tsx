@@ -32,7 +32,7 @@ import { customersApi, Order, authApi } from "@/apiRoutes";
 import { PaymentDialog } from "@/components/PaymentDialog";
 
 export default function CustomerDashboard() {
-  const { user, token, logout, isAuthenticated } = useAuth();
+  const { user, token, logout, isAuthenticated, isLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
@@ -51,12 +51,26 @@ export default function CustomerDashboard() {
   });
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Wait for auth state to finish loading before checking authentication
+    if (isLoading) {
+      return;
+    }
+
+    // Check localStorage directly as a fallback
+    const storedToken = localStorage.getItem("access_token");
+    const storedUser = localStorage.getItem("user");
+    
+    if (!isAuthenticated && (!storedToken || !storedUser)) {
       navigate("/");
       return;
     }
-    checkProfileAndFetchOrders();
-  }, [isAuthenticated, navigate]);
+    
+    // Only fetch data if authenticated
+    if (isAuthenticated || (storedToken && storedUser)) {
+      checkProfileAndFetchOrders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, isLoading, navigate]);
 
   const checkProfileAndFetchOrders = async () => {
     if (!token) return;
@@ -141,7 +155,7 @@ export default function CustomerDashboard() {
   };
 
   const handlePaymentComplete = () => {
-    fetchOrders(); // Refresh orders after payment
+    checkProfileAndFetchOrders(); // Refresh orders after payment
     setPaymentDialogOpen(false);
     setSelectedOrder(null);
   };
@@ -244,6 +258,19 @@ export default function CustomerDashboard() {
   const deliveredOrders = orders.filter((o) => o.status === "delivered").length;
   const totalSpent = orders.reduce((sum, order) => sum + order.total_amount, 0);
 
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-cyan-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-cyan-600 border-t-transparent mb-4"></div>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if not authenticated (after loading is complete)
   if (!isAuthenticated) {
     return null;
   }
@@ -540,87 +567,89 @@ export default function CustomerDashboard() {
 
       {/* Profile Completion Dialog */}
       <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-md max-h-[95vh] flex flex-col overflow-hidden p-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
             <DialogTitle>Complete Your Profile</DialogTitle>
             <DialogDescription>
               Please provide the following information to complete your profile and continue using our services.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleProfileSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone Number *</Label>
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+1234567890"
-                value={profileData.phone}
-                onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
+          <form onSubmit={handleProfileSubmit} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-4 overflow-y-auto flex-1 px-6 pb-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number *</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+1234567890"
+                  value={profileData.phone}
+                  onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="address">Address *</Label>
+                <Input
+                  id="address"
+                  type="text"
+                  placeholder="123 Main Street"
+                  value={profileData.address}
+                  onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="city">City *</Label>
+                <Input
+                  id="city"
+                  type="text"
+                  placeholder="New York"
+                  value={profileData.city}
+                  onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="state">State/Province *</Label>
+                <Input
+                  id="state"
+                  type="text"
+                  placeholder="NY"
+                  value={profileData.state}
+                  onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="zip_code">Zip/Postal Code *</Label>
+                <Input
+                  id="zip_code"
+                  type="text"
+                  placeholder="10001"
+                  value={profileData.zip_code}
+                  onChange={(e) => setProfileData({ ...profileData, zip_code: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="country">Country *</Label>
+                <Input
+                  id="country"
+                  type="text"
+                  placeholder="United States"
+                  value={profileData.country}
+                  onChange={(e) => setProfileData({ ...profileData, country: e.target.value })}
+                  required
+                  disabled={profileLoading}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="address">Address *</Label>
-              <Input
-                id="address"
-                type="text"
-                placeholder="123 Main Street"
-                value={profileData.address}
-                onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="city">City *</Label>
-              <Input
-                id="city"
-                type="text"
-                placeholder="New York"
-                value={profileData.city}
-                onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="state">State/Province *</Label>
-              <Input
-                id="state"
-                type="text"
-                placeholder="NY"
-                value={profileData.state}
-                onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="zip_code">Zip/Postal Code *</Label>
-              <Input
-                id="zip_code"
-                type="text"
-                placeholder="10001"
-                value={profileData.zip_code}
-                onChange={(e) => setProfileData({ ...profileData, zip_code: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="country">Country *</Label>
-              <Input
-                id="country"
-                type="text"
-                placeholder="United States"
-                value={profileData.country}
-                onChange={(e) => setProfileData({ ...profileData, country: e.target.value })}
-                required
-                disabled={profileLoading}
-              />
-            </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 px-6 pb-6 pt-4 border-t flex-shrink-0">
               <Button
                 type="submit"
                 className="flex-1"

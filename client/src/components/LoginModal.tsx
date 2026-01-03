@@ -17,11 +17,12 @@ import { auth, googleProvider } from "@/firebase/config";
 interface LoginModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLoginSuccess?: () => void;
+  onLoginSuccess?: () => void | Promise<void>;
   initialMode?: 'login' | 'signup';
+  skipRedirect?: boolean; // Set to true to skip automatic redirect (e.g., for checkout flow)
 }
 
-export function LoginModal({ open, onOpenChange, onLoginSuccess, initialMode = 'login' }: LoginModalProps) {
+export function LoginModal({ open, onOpenChange, onLoginSuccess, initialMode = 'login', skipRedirect = false }: LoginModalProps) {
   const [loading, setLoading] = useState(false);
   const { t } = useLanguage();
   const { googleAuth } = useAuth();
@@ -29,10 +30,21 @@ export function LoginModal({ open, onOpenChange, onLoginSuccess, initialMode = '
   const navigate = useNavigate();
 
   const handleGoogleSignIn = async () => {
+    console.log("🔵 [LoginModal] Google sign-in button clicked");
+    console.log("🔵 [LoginModal] Auth object:", auth);
+    console.log("🔵 [LoginModal] Google provider:", googleProvider);
+    console.log("🔵 [LoginModal] Firebase config check:", {
+      apiKey: import.meta.env.VITE_FIREBASE_API_KEY ? "✅ Present" : "❌ Missing",
+      authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ? "✅ Present" : "❌ Missing",
+      projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ? "✅ Present" : "❌ Missing",
+    });
+    
     setLoading(true);
     try {
+      console.log("🔵 [LoginModal] Attempting signInWithPopup...");
       // Sign in with Firebase Google Auth
       const result = await signInWithPopup(auth, googleProvider);
+      console.log("✅ [LoginModal] Sign-in successful:", result);
       const user = result.user;
       
       // Get the ID token from Firebase
@@ -48,26 +60,55 @@ export function LoginModal({ open, onOpenChange, onLoginSuccess, initialMode = '
       
       onOpenChange(false);
       
-      // Call success callback if provided (for checkout flow)
-      if (onLoginSuccess) {
-        onLoginSuccess();
-      } else {
-        // Always redirect to customer dashboard for customers
+      // Call success callback if provided (for checkout flow or other actions)
+      // Use Promise.resolve to handle both sync and async callbacks
+      await Promise.resolve(onLoginSuccess?.());
+      
+      // Always redirect based on user role (unless skipRedirect is true, e.g., for checkout)
+      if (!skipRedirect) {
         if (backendUser?.role === 'customer') {
-          navigate("/customer/dashboard");
+          console.log("🔵 [LoginModal] Redirecting to customer dashboard");
+          navigate("/customer/dashboard", { replace: true });
         } else if (backendUser?.role === 'admin') {
-          navigate("/admin");
+          console.log("🔵 [LoginModal] Redirecting to admin dashboard");
+          navigate("/admin", { replace: true });
+        } else {
+          console.log("🔵 [LoginModal] No role found, redirecting to home");
+          navigate("/", { replace: true });
         }
+      } else {
+        console.log("🔵 [LoginModal] Skipping redirect (skipRedirect=true)");
       }
     } catch (error: any) {
-      console.error("Google sign-in error:", error);
+      console.error("❌ [LoginModal] Google sign-in error:", error);
+      console.error("❌ [LoginModal] Error code:", error.code);
+      console.error("❌ [LoginModal] Error message:", error.message);
+      console.error("❌ [LoginModal] Full error object:", JSON.stringify(error, null, 2));
+      
+      let errorMessage = "Google authentication failed. Please try again.";
+      
+      // Handle specific Firebase errors
+      if (error.code === "auth/configuration-not-found" || error.code === 400 || error.code === "auth/configuration-not-found") {
+        errorMessage = "Firebase configuration error. Please ensure Google Authentication is enabled in Firebase Console and your domain is authorized.";
+        console.error("❌ [LoginModal] CONFIGURATION_NOT_FOUND - Check Firebase Console:");
+        console.error("   1. Go to Firebase Console → Authentication → Sign-in method");
+        console.error("   2. Enable Google Authentication");
+        console.error("   3. Go to Settings → Authorized domains");
+        console.error("   4. Add 'localhost' if not present");
+      } else if (error.code === "auth/popup-closed-by-user") {
+        errorMessage = "Sign-in popup was closed. Please try again.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
-        description: error.message || "Google authentication failed. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
       setLoading(false);
+      console.log("🔵 [LoginModal] Sign-in process completed");
     }
   };
 

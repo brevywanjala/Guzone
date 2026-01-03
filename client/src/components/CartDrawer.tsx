@@ -271,6 +271,7 @@ export function CartDrawer() {
         open={showLogin} 
         onOpenChange={setShowLogin}
         onLoginSuccess={handleLoginSuccess}
+        skipRedirect={true}
       />
       <PaymentDialog
         open={showPayment}
@@ -278,6 +279,7 @@ export function CartDrawer() {
         order={currentOrder}
         onOrderComplete={handleOrderComplete}
       />
+      
     </>
   );
 }
