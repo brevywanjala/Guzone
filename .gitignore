@@ -57,10 +57,12 @@ eggs/
 backend/eggs/
 .eggs/
 backend/.eggs/
+# Python lib directories (not client/src/lib)
 lib/
 backend/lib/
 lib64/
 backend/lib64/
+!client/src/lib/
 parts/
 backend/parts/
 sdist/
