@@ -6,6 +6,10 @@ from Models.admin import Admin
 from Models.customers import Customer
 from datetime import datetime
 import uuid
+import os
+import requests
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -271,4 +275,225 @@ def get_current_user():
         user_data['customer_profile'] = user.customer_profile.to_dict()
     
     return jsonify(user_data), 200
+
+# Initialize Firebase Admin SDK (only once)
+_firebase_initialized = False
+
+def init_firebase():
+    """Initialize Firebase Admin SDK"""
+    global _firebase_initialized
+    if _firebase_initialized:
+        return
+    
+    if not firebase_admin._apps:
+        # Try to use service account from environment variable first
+        cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
+        
+        # If not set, try to find ServiceAccountKey.json in backend directory
+        if not cred_path:
+            # Get the backend directory (parent of Routes directory)
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            backend_dir = os.path.dirname(current_dir)  # Go up from Routes to backend
+            default_path = os.path.join(backend_dir, 'ServiceAccountKey.json')
+            
+            if os.path.exists(default_path):
+                cred_path = default_path
+                print(f"Found service account key at: {cred_path}")
+        
+        # Try to initialize with service account file
+        if cred_path and os.path.exists(cred_path):
+            try:
+                cred = credentials.Certificate(cred_path)
+                firebase_admin.initialize_app(cred)
+                _firebase_initialized = True
+                print("Firebase Admin SDK initialized successfully")
+                return
+            except Exception as e:
+                print(f"Error initializing Firebase with credentials file: {e}")
+        
+        # Try to use default credentials (for cloud environments like GCP)
+        try:
+            firebase_admin.initialize_app()
+            _firebase_initialized = True
+            print("Firebase Admin SDK initialized with default credentials")
+            return
+        except Exception as e:
+            print(f"Warning: Firebase Admin SDK not initialized: {e}")
+            print("Please ensure ServiceAccountKey.json exists in the backend directory")
+            print("Or set FIREBASE_CREDENTIALS_PATH environment variable with path to service account JSON")
+            print("Or ensure you're running in a GCP environment with default credentials")
+
+@auth_bp.route('/google', methods=['POST'])
+def google_auth():
+    """Handle Firebase Google Auth login/signup"""
+    data = request.get_json()
+    
+    if not data or not data.get('token'):
+        return jsonify({'error': 'Firebase ID token is required'}), 400
+    
+    firebase_token = data['token']
+    
+    try:
+        # Initialize Firebase Admin if not already done
+        init_firebase()
+        
+        # Verify Firebase ID token
+        try:
+            decoded_token = firebase_auth.verify_id_token(firebase_token)
+        except ValueError as e:
+            # Firebase not initialized
+            return jsonify({
+                'error': 'Firebase Admin SDK not configured',
+                'details': 'Please set FIREBASE_CREDENTIALS_PATH environment variable'
+            }), 500
+        except Exception as e:
+            return jsonify({'error': 'Invalid Firebase token', 'details': str(e)}), 401
+        
+        # Extract user info from decoded token
+        email = decoded_token.get('email')
+        first_name = decoded_token.get('name', '').split()[0] if decoded_token.get('name') else ''
+        last_name = ' '.join(decoded_token.get('name', '').split()[1:]) if decoded_token.get('name') and len(decoded_token.get('name', '').split()) > 1 else ''
+        picture = decoded_token.get('picture', '')
+        
+        if not email:
+            return jsonify({'error': 'Email not provided by Firebase'}), 400
+        
+        # Check if user exists
+        user = User.query.filter_by(email=email).first()
+        is_new_user = False
+        
+        if not user:
+            # Create new user
+            is_new_user = True
+            email_prefix = email.split('@')[0].lower()
+            username = ''.join(c for c in email_prefix if c.isalnum())
+            
+            if not username:
+                username = f'user{datetime.utcnow().timestamp()}'
+            
+            # Ensure username is unique
+            base_username = username
+            counter = 1
+            while User.query.filter_by(username=username).first():
+                username = f'{base_username}{counter}'
+                counter += 1
+            
+            # Create user with a random password (won't be used for Google auth)
+            user = User(
+                username=username,
+                email=email,
+                role='customer'
+            )
+            # Set a random password that won't be used
+            user.set_password(str(uuid.uuid4()))
+            
+            db.session.add(user)
+            db.session.flush()
+            
+            # Create customer profile with Google info
+            customer = Customer(
+                user_id=user.id,
+                first_name=first_name or 'Customer',
+                last_name=last_name or 'User',
+                phone=None,
+                address=None,
+                city=None,
+                state=None,
+                zip_code=None,
+                country=None
+            )
+            db.session.add(customer)
+            db.session.commit()
+        else:
+            # Existing user - check if customer profile exists
+            if user.role == 'customer' and not user.customer_profile:
+                # Create customer profile if missing
+                customer = Customer(
+                    user_id=user.id,
+                    first_name=first_name or 'Customer',
+                    last_name=last_name or 'User',
+                    phone=None,
+                    address=None,
+                    city=None,
+                    state=None,
+                    zip_code=None,
+                    country=None
+                )
+                db.session.add(customer)
+                db.session.commit()
+        
+        if not user.is_active:
+            return jsonify({'error': 'Account is inactive'}), 403
+        
+        # Generate tokens
+        access_token = create_access_token(identity=str(user.id))
+        refresh_token = create_refresh_token(identity=str(user.id))
+        
+        # Create response
+        response = make_response(jsonify({
+            'message': 'Login successful' if not is_new_user else 'Account created successfully',
+            'user': user.to_dict(),
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'is_new_user': is_new_user
+        }))
+        
+        # Set tokens as HTTP-only cookies
+        from datetime import timedelta
+        ACCESS_TOKEN_MAX_AGE = 60 * 60 * 24  # 24 hours
+        REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+        
+        response.set_cookie(
+            'refresh_token',
+            refresh_token,
+            max_age=REFRESH_TOKEN_MAX_AGE,
+            httponly=True,
+            secure=False,
+            samesite='Lax',
+            path='/'
+        )
+        response.set_cookie(
+            'access_token_cookie',
+            access_token,
+            max_age=ACCESS_TOKEN_MAX_AGE,
+            httponly=True,
+            secure=False,
+            samesite='Lax',
+            path='/'
+        )
+        
+        return response, 200 if not is_new_user else 201
+        
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"Google auth error: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({'error': 'Google authentication failed', 'details': str(e)}), 500
+
+@auth_bp.route('/check-profile-complete', methods=['GET'])
+@jwt_required()
+def check_profile_complete():
+    """Check if customer profile is complete"""
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(int(current_user_id))
+    
+    if not current_user or current_user.role != 'customer':
+        return jsonify({'error': 'Customer access required'}), 403
+    
+    customer = Customer.query.filter_by(user_id=int(current_user_id)).first()
+    if not customer:
+        return jsonify({'error': 'Customer profile not found'}), 404
+    
+    # Check if required fields are filled
+    required_fields = ['phone', 'address', 'city', 'state', 'zip_code', 'country']
+    missing_fields = [field for field in required_fields if not getattr(customer, field)]
+    
+    is_complete = len(missing_fields) == 0
+    
+    return jsonify({
+        'is_complete': is_complete,
+        'missing_fields': missing_fields,
+        'customer': customer.to_dict()
+    }), 200
 

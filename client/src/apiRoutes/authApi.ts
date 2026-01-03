@@ -72,5 +72,36 @@ export const authApi = {
     const response = await apiClient.get<AuthResponse["user"]>("/auth/me");
     return response.data;
   },
+
+  // Google OAuth login/signup
+  googleAuth: async (token: string): Promise<AuthResponse & { is_new_user?: boolean }> => {
+    const axios = (await import("axios")).default;
+    const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    const response = await axios.post<AuthResponse & { is_new_user?: boolean }>(
+      `${API_BASE_URL}/auth/google`,
+      { token },
+      {
+        withCredentials: true,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    return response.data;
+  },
+
+  // Check if profile is complete
+  checkProfileComplete: async (): Promise<{
+    is_complete: boolean;
+    missing_fields: string[];
+    customer: any;
+  }> => {
+    const response = await apiClient.get<{
+      is_complete: boolean;
+      missing_fields: string[];
+      customer: any;
+    }>("/auth/check-profile-complete");
+    return response.data;
+  },
 };
 

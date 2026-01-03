@@ -4,6 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Package, 
   ShoppingBag, 
@@ -19,7 +28,7 @@ import {
   Menu
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { customersApi, Order } from "@/apiRoutes";
+import { customersApi, Order, authApi } from "@/apiRoutes";
 import { PaymentDialog } from "@/components/PaymentDialog";
 
 export default function CustomerDashboard() {
@@ -30,30 +39,89 @@ export default function CustomerDashboard() {
   const [loading, setLoading] = useState(true);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileData, setProfileData] = useState({
+    phone: "",
+    address: "",
+    city: "",
+    state: "",
+    zip_code: "",
+    country: "",
+  });
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/");
       return;
     }
-    fetchOrders();
+    checkProfileAndFetchOrders();
   }, [isAuthenticated, navigate]);
 
-  const fetchOrders = async () => {
+  const checkProfileAndFetchOrders = async () => {
     if (!token) return;
 
     try {
+      // Check if profile is complete
+      const profileCheck = await authApi.checkProfileComplete();
+      if (!profileCheck.is_complete) {
+        setProfileDialogOpen(true);
+        // Pre-fill with existing data if available
+        if (profileCheck.customer) {
+          setProfileData({
+            phone: profileCheck.customer.phone || "",
+            address: profileCheck.customer.address || "",
+            city: profileCheck.customer.city || "",
+            state: profileCheck.customer.state || "",
+            zip_code: profileCheck.customer.zip_code || "",
+            country: profileCheck.customer.country || "",
+          });
+        }
+      }
+      
+      // Fetch orders regardless
       const data = await customersApi.getOrders();
       setOrders(data);
     } catch (error) {
-      console.error("Error fetching orders:", error);
+      console.error("Error checking profile or fetching orders:", error);
       toast({
         title: "Error",
-        description: "Failed to load orders",
+        description: "Failed to load dashboard data",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileLoading(true);
+
+    try {
+      await customersApi.updateProfile(profileData);
+      toast({
+        title: "Success",
+        description: "Profile updated successfully!",
+      });
+      setProfileDialogOpen(false);
+      // Re-check profile to ensure it's complete
+      const profileCheck = await authApi.checkProfileComplete();
+      if (!profileCheck.is_complete) {
+        toast({
+          title: "Warning",
+          description: "Please fill in all required fields",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to update profile",
+        variant: "destructive",
+      });
+    } finally {
+      setProfileLoading(false);
     }
   };
 
@@ -469,6 +537,101 @@ export default function CustomerDashboard() {
         order={selectedOrder}
         onOrderComplete={handlePaymentComplete}
       />
+
+      {/* Profile Completion Dialog */}
+      <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete Your Profile</DialogTitle>
+            <DialogDescription>
+              Please provide the following information to complete your profile and continue using our services.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number *</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1234567890"
+                value={profileData.phone}
+                onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Address *</Label>
+              <Input
+                id="address"
+                type="text"
+                placeholder="123 Main Street"
+                value={profileData.address}
+                onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">City *</Label>
+              <Input
+                id="city"
+                type="text"
+                placeholder="New York"
+                value={profileData.city}
+                onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="state">State/Province *</Label>
+              <Input
+                id="state"
+                type="text"
+                placeholder="NY"
+                value={profileData.state}
+                onChange={(e) => setProfileData({ ...profileData, state: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="zip_code">Zip/Postal Code *</Label>
+              <Input
+                id="zip_code"
+                type="text"
+                placeholder="10001"
+                value={profileData.zip_code}
+                onChange={(e) => setProfileData({ ...profileData, zip_code: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="country">Country *</Label>
+              <Input
+                id="country"
+                type="text"
+                placeholder="United States"
+                value={profileData.country}
+                onChange={(e) => setProfileData({ ...profileData, country: e.target.value })}
+                required
+                disabled={profileLoading}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={profileLoading}
+              >
+                {profileLoading ? "Saving..." : "Save Profile"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -13,6 +13,7 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<User>;
   signup: (email: string, password: string) => Promise<User>;
+  googleAuth: (token: string) => Promise<{ user: User; isNewUser: boolean }>;
   logout: () => void;
   isAuthenticated: boolean;
 }
@@ -111,6 +112,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const googleAuth = async (token: string) => {
+    try {
+      const data = await authApi.googleAuth(token);
+
+      // Ensure tokens exist before storing
+      if (!data.access_token) {
+        throw new Error("Access token not received from server");
+      }
+
+      // Store tokens immediately and synchronously
+      localStorage.setItem("access_token", data.access_token);
+      setToken(data.access_token);
+      if (data.refresh_token) {
+        localStorage.setItem("refresh_token", data.refresh_token);
+      }
+      if (data.user) {
+        localStorage.setItem("user", JSON.stringify(data.user));
+        setUser(data.user);
+      }
+      
+      // Return user data and whether it's a new user
+      return {
+        user: data.user,
+        isNewUser: data.is_new_user || false,
+      };
+    } catch (error: any) {
+      throw new Error(error.response?.data?.error || error.message || "Google authentication failed");
+    }
+  };
+
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -126,6 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         login,
         signup,
+        googleAuth,
         logout,
         isAuthenticated: !!user && !!token,
       }}
