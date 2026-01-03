@@ -12,6 +12,11 @@ client/.env.local
 client/.env.*.local
 *.env
 
+# Firebase Service Account Keys
+ServiceAccountKey.json
+backend/ServiceAccountKey.json
+*ServiceAccountKey*.json
+
 # Python Virtual Environment
 venv/
 backend/venv/
