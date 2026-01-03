@@ -7,7 +7,7 @@ from Models.customers import Customer
 from datetime import datetime
 import uuid
 import os
-import requests
+import json
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 
@@ -286,7 +286,24 @@ def init_firebase():
         return
     
     if not firebase_admin._apps:
-        # Try to use service account from environment variable first
+        # Try to get Firebase credentials from environment variable (JSON string)
+        firebase_creds_json = os.getenv('FIREBASE_CREDENTIALS_JSON')
+        
+        if firebase_creds_json:
+            try:
+                # Parse JSON string from environment variable
+                cred_dict = json.loads(firebase_creds_json)
+                cred = credentials.Certificate(cred_dict)
+                firebase_admin.initialize_app(cred)
+                _firebase_initialized = True
+                print("Firebase Admin SDK initialized from environment variable")
+                return
+            except json.JSONDecodeError as e:
+                print(f"Error parsing FIREBASE_CREDENTIALS_JSON: {e}")
+            except Exception as e:
+                print(f"Error initializing Firebase from environment variable: {e}")
+        
+        # Fallback: Try to use service account file path
         cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH')
         
         # If not set, try to find ServiceAccountKey.json in backend directory
@@ -306,7 +323,7 @@ def init_firebase():
                 cred = credentials.Certificate(cred_path)
                 firebase_admin.initialize_app(cred)
                 _firebase_initialized = True
-                print("Firebase Admin SDK initialized successfully")
+                print("Firebase Admin SDK initialized from file")
                 return
             except Exception as e:
                 print(f"Error initializing Firebase with credentials file: {e}")
@@ -319,8 +336,8 @@ def init_firebase():
             return
         except Exception as e:
             print(f"Warning: Firebase Admin SDK not initialized: {e}")
-            print("Please ensure ServiceAccountKey.json exists in the backend directory")
-            print("Or set FIREBASE_CREDENTIALS_PATH environment variable with path to service account JSON")
+            print("Please set FIREBASE_CREDENTIALS_JSON environment variable with the JSON content")
+            print("Or set FIREBASE_CREDENTIALS_PATH with path to service account JSON file")
             print("Or ensure you're running in a GCP environment with default credentials")
 
 @auth_bp.route('/google', methods=['POST'])
