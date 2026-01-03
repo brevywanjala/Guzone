@@ -36,11 +36,13 @@ VITE_API_URL=https://your-backend-api-url.com/api
 
 ## Vercel Project Settings
 
-1. **Root Directory**: Leave empty (or set to root of repository)
+1. **Root Directory**: Set to `client` (this tells Vercel to deploy from the client directory)
 2. **Framework Preset**: Vite
-3. **Build Command**: `cd client && npm run build` (or use vercel.json)
-4. **Output Directory**: `client/dist`
-5. **Install Command**: `cd client && npm install`
+3. **Build Command**: `npm run build` (automatically detected when root is `client`)
+4. **Output Directory**: `dist` (automatically detected for Vite)
+5. **Install Command**: `npm install` (default)
+
+**Note**: Since you're deploying from the `client` directory directly, the `vercel.json` file is located in the `client` folder, and all paths are relative to that directory.
 
 ## After Adding Environment Variables
 
