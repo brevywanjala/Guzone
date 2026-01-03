@@ -270,6 +270,7 @@ export default function CustomerDashboard() {
     );
   }
 
+  
   // Redirect if not authenticated (after loading is complete)
   if (!isAuthenticated) {
     return null;
