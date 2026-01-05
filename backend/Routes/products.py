@@ -5,7 +5,7 @@ from Models.users import User
 from Models.customers import Customer
 from Models.products import Product, Category, ProductImage, Order, OrderItem, Delivery, DeliveryUpdate, Offer
 from datetime import datetime, timedelta
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, case
 import uuid
 import os
 from werkzeug.utils import secure_filename
@@ -498,6 +498,93 @@ def get_product(product_id):
         return jsonify({'error': 'Product not found'}), 404
     
     return jsonify(product.to_dict()), 200
+
+@products_bp.route('/<int:product_id>/similar', methods=['GET'])
+@jwt_required(optional=True)
+def get_similar_products(product_id):
+    """Get similar products based on name and description similarity"""
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+    
+    current_user_id = get_jwt_identity()
+    is_admin = False
+    
+    if current_user_id:
+        current_user = User.query.get(current_user_id)
+        is_admin = current_user and current_user.role == 'admin'
+    
+    # Non-admins can't see inactive products
+    if not product.is_active and not is_admin:
+        return jsonify({'error': 'Product not found'}), 404
+    
+    # Get limit from query params (default 4)
+    limit = request.args.get('limit', 4, type=int)
+    
+    # Base query - exclude current product and only active products (unless admin)
+    base_query = Product.query.filter(Product.id != product_id)
+    if not is_admin:
+        base_query = base_query.filter(Product.is_active == True)
+    
+    similar_products = []
+    seen_ids = set()
+    
+    # Strategy 1: Same category products (highest priority)
+    if product.category_id:
+        category_matches = base_query.filter(
+            Product.category_id == product.category_id
+        ).limit(limit * 3).all()
+        for p in category_matches:
+            if p.id not in seen_ids:
+                seen_ids.add(p.id)
+                similar_products.append(p)
+    
+    # Strategy 2: Find products with similar names (using LIKE for partial matches)
+    if product.name and len(similar_products) < limit:
+        # Extract meaningful keywords from product name (remove common words)
+        name_words = product.name.lower().split()
+        # Filter out common words
+        common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
+        name_keywords = [w for w in name_words if w not in common_words and len(w) > 2][:4]
+        
+        if name_keywords:
+            # Create OR conditions for each keyword
+            name_conditions = []
+            for keyword in name_keywords:
+                name_conditions.append(func.lower(Product.name).like(f"%{keyword}%"))
+            
+            if name_conditions:
+                name_matches = base_query.filter(or_(*name_conditions)).limit(limit * 2).all()
+                for p in name_matches:
+                    if p.id not in seen_ids:
+                        seen_ids.add(p.id)
+                        similar_products.append(p)
+    
+    # Strategy 3: Find products with similar descriptions
+    if product.description and len(similar_products) < limit:
+        # Extract meaningful keywords from description
+        desc_words = product.description.lower().split()
+        # Filter out common words and get meaningful keywords
+        common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'should', 'could', 'may', 'might', 'can', 'this', 'that', 'these', 'those'}
+        desc_keywords = [w for w in desc_words if w not in common_words and len(w) > 3][:5]
+        
+        if desc_keywords:
+            # Create OR conditions for description keywords
+            desc_conditions = []
+            for keyword in desc_keywords:
+                desc_conditions.append(func.lower(Product.description).like(f"%{keyword}%"))
+            
+            if desc_conditions:
+                desc_matches = base_query.filter(or_(*desc_conditions)).limit(limit * 2).all()
+                for p in desc_matches:
+                    if p.id not in seen_ids:
+                        seen_ids.add(p.id)
+                        similar_products.append(p)
+    
+    # Limit to requested number
+    similar_products = similar_products[:limit]
+    
+    return jsonify([p.to_dict() for p in similar_products]), 200
 
 @products_bp.route('/', methods=['POST'])
 @products_bp.route('', methods=['POST'])  # Handle both with and without trailing slash

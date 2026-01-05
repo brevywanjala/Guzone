@@ -159,5 +159,16 @@ export const productsApi = {
     );
     return response.data;
   },
+
+  // Get similar products
+  getSimilarProducts: async (productId: number, limit?: number): Promise<Product[]> => {
+    const queryParams = new URLSearchParams();
+    if (limit) queryParams.append('limit', limit.toString());
+    
+    const queryString = queryParams.toString();
+    const url = `/products/${productId}/similar${queryString ? `?${queryString}` : ''}`;
+    const response = await apiClient.get<Product[]>(url);
+    return response.data;
+  },
 };
 

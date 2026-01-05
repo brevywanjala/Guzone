@@ -16,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import guzoneLogo from "@/assets/Guzone_Logo.jpg";
 
 export function Header() {
   const { t } = useLanguage();
@@ -31,7 +32,7 @@ export function Header() {
           <MobileMenu />
           <Link to="/" className="flex items-center gap-2">
             <img 
-              src="/Guzone_Logo.jpg" 
+              src={guzoneLogo} 
               alt="Guzone Logo" 
               className="h-8 w-auto sm:h-10"
             />
