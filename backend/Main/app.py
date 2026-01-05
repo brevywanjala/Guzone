@@ -95,7 +95,7 @@ def create_app(config_name='development'):
              "http://localhost:5173", 
              "http://localhost:3000", 
              "http://localhost:8080",
-             "https://guzone.vercel.app"
+             "https://guzone.vercel.app",
          ],  # Add your frontend URLs
          allow_headers=["Content-Type", "Authorization"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
