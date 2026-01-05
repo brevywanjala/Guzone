@@ -38,6 +38,8 @@ import {
   Plus,
   Trash2,
   Star,
+  Power,
+  PowerOff,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -165,8 +167,10 @@ export default function AdminProducts() {
   const [deleteProductConfirmOpen, setDeleteProductConfirmOpen] = useState(false);
   const [deleteCategoryConfirmOpen, setDeleteCategoryConfirmOpen] = useState(false);
   const [deleteOfferConfirmOpen, setDeleteOfferConfirmOpen] = useState(false);
+  const [deactivateProductConfirmOpen, setDeactivateProductConfirmOpen] = useState(false);
   const [imageToDelete, setImageToDelete] = useState<{ productId: number; imageId?: number; imageUrl: string } | null>(null);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const [productToDeactivate, setProductToDeactivate] = useState<Product | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [offerToDelete, setOfferToDelete] = useState<Offer | null>(null);
   const [saving, setSaving] = useState(false);
@@ -335,15 +339,66 @@ export default function AdminProducts() {
         try {
           const result = await productsApi.uploadProductImage(file);
           const imageUrl = result.image_url;
-          setProductImages([...productImages, imageUrl]);
+          const updatedImages = [...productImages, imageUrl];
+          setProductImages(updatedImages);
           // If this is the first image, set it as main
           if (productImages.length === 0) {
             setFormData({ ...formData, main_image_url: imageUrl });
           }
-          toast({
-            title: "Success",
-            description: "Image uploaded successfully",
-          });
+          
+          // If editing, automatically save the changes
+          if (isEditing && selectedProduct) {
+            try {
+              const productData: any = {
+                name: formData.name,
+                description: formData.description || undefined,
+                price: parseFloat(formData.price),
+                stock_quantity: parseInt(formData.stock_quantity) || 0,
+                sku: formData.sku || undefined,
+                is_active: formData.is_active,
+                main_image_url: formData.main_image_url || imageUrl || undefined,
+                minimum_order: formData.minimum_order ? parseInt(formData.minimum_order) : undefined,
+                unit_term: formData.unit_term || undefined,
+                item_location: formData.location || undefined,
+                supplier_name: formData.supplier_name || undefined,
+                category_id: formData.category_id ? parseInt(formData.category_id) : undefined,
+                is_featured: formData.is_featured,
+                discount_percentage: formData.discount_percentage ? parseFloat(formData.discount_percentage) : undefined,
+                discount_start_date: formData.discount_start_date ? `${formData.discount_start_date}T00:00:00Z` : undefined,
+                discount_end_date: formData.discount_end_date ? `${formData.discount_end_date}T23:59:59Z` : undefined,
+                offer_id: formData.offer_id ? parseInt(formData.offer_id) : undefined,
+                images: updatedImages.map((url, idx) => ({
+                  image_url: url,
+                  display_order: idx,
+                })),
+              };
+              
+              await productsApi.updateProduct(selectedProduct.id, productData);
+              
+              // Refresh product data to get updated images
+              const updatedProduct = await productsApi.getProduct(selectedProduct.id);
+              const updatedImagesList = getProductImages(updatedProduct);
+              setProductImages(updatedImagesList);
+              setSelectedProduct(updatedProduct);
+              
+              toast({
+                title: "Success",
+                description: "Image uploaded and saved successfully",
+              });
+            } catch (saveError: any) {
+              console.error("Error saving image:", saveError);
+              toast({
+                title: "Warning",
+                description: "Image uploaded but failed to save. Please click Save Changes.",
+                variant: "destructive",
+              });
+            }
+          } else {
+            toast({
+              title: "Success",
+              description: "Image uploaded successfully",
+            });
+          }
         } catch (error: any) {
           toast({
             title: "Error",
@@ -524,6 +579,59 @@ export default function AdminProducts() {
       toast({
         title: "Error",
         description: error.response?.data?.error || "Failed to delete product",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleToggleProductActive = (product: Product) => {
+    // If activating, do it immediately without confirmation
+    if (!product.is_active) {
+      confirmActivateProduct(product);
+    } else {
+      // If deactivating, show confirmation dialog
+      setProductToDeactivate(product);
+      setDeactivateProductConfirmOpen(true);
+    }
+  };
+
+  const confirmActivateProduct = async (product: Product) => {
+    try {
+      const updatedProduct = await productsApi.updateProduct(product.id, {
+        is_active: true,
+      });
+      toast({
+        title: "Success",
+        description: "Product activated successfully",
+      });
+      fetchProducts();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to activate product",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const confirmDeactivateProduct = async () => {
+    if (!productToDeactivate) return;
+
+    try {
+      const updatedProduct = await productsApi.updateProduct(productToDeactivate.id, {
+        is_active: false,
+      });
+      toast({
+        title: "Success",
+        description: "Product deactivated successfully",
+      });
+      setDeactivateProductConfirmOpen(false);
+      setProductToDeactivate(null);
+      fetchProducts();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to deactivate product",
         variant: "destructive",
       });
     }
@@ -907,6 +1015,28 @@ export default function AdminProducts() {
                                 >
                                   <Edit className="h-4 w-4 mr-1" />
                                   Edit
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleToggleProductActive(product)}
+                                  className={product.is_active 
+                                    ? "border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:border-orange-400 dark:hover:border-orange-600 hover:text-orange-700 dark:hover:text-orange-300"
+                                    : "border-green-300 dark:border-green-700 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 hover:border-green-400 dark:hover:border-green-600 hover:text-green-700 dark:hover:text-green-300"
+                                  }
+                                  title={product.is_active ? "Deactivate Product" : "Activate Product"}
+                                >
+                                  {product.is_active ? (
+                                    <>
+                                      <PowerOff className="h-4 w-4 mr-1" />
+                                      Deactivate
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Power className="h-4 w-4 mr-1" />
+                                      Activate
+                                    </>
+                                  )}
                                 </Button>
                                 <Button
                                   variant="outline"
@@ -1962,6 +2092,39 @@ export default function AdminProducts() {
               className="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white border-0 shadow-lg shadow-red-500/25"
             >
               Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deactivate Product Confirmation Dialog */}
+      <Dialog open={deactivateProductConfirmOpen} onOpenChange={setDeactivateProductConfirmOpen}>
+        <DialogContent className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-md border-2 border-orange-200/50 dark:border-orange-800/50 shadow-2xl shadow-orange-500/20">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-gray-900 dark:text-white">
+              Deactivate Product
+            </DialogTitle>
+            <DialogDescription className="text-gray-600 dark:text-gray-400">
+              Are you sure you want to deactivate the product "{productToDeactivate?.name}"? This will hide it from customers on the landing page and products page. You can reactivate it later.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeactivateProductConfirmOpen(false);
+                setProductToDeactivate(null);
+              }}
+              className="border-gray-300 dark:border-gray-700"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={confirmDeactivateProduct}
+              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white border-0 shadow-lg shadow-orange-500/25"
+            >
+              Deactivate
             </Button>
           </div>
         </DialogContent>

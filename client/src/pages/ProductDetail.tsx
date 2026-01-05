@@ -41,6 +41,18 @@ const ProductDetail = () => {
         
         // Fetch product details
         const backendProduct = await productsApi.getProduct(productId);
+        
+        // Debug logging (remove in production)
+        if (import.meta.env.DEV) {
+          console.log('🔵 [ProductDetail] Backend product data:', {
+            id: backendProduct.id,
+            name: backendProduct.name,
+            main_image_url: backendProduct.main_image_url,
+            imagesCount: backendProduct.images?.length || 0,
+            images: backendProduct.images
+          });
+        }
+        
         const transformedProduct = transformProduct(backendProduct);
         setProduct(transformedProduct);
 
@@ -94,14 +106,43 @@ const ProductDetail = () => {
     );
   }
 
-  // Get all image URLs, ensuring we have at least one
-  const allImages = product.images && product.images.length > 0 
-    ? product.images.map(getImageUrl)
-    : product.image 
-    ? [getImageUrl(product.image)]
-    : ['/placeholder-product.jpg'];
+  // Get all image URLs from the product
+  // The transform function provides:
+  // - product.image: main image URL (single) - already processed with getImageUrl
+  // - product.images: array of all image URLs (optional) - already processed with getImageUrl
+  // We want to use product.images if available (includes all images), otherwise fallback to product.image
+  let allImages: string[] = [];
+  
+  // The transform function processes images and returns:
+  // - product.image: single main image URL (already processed with getImageUrl)
+  // - product.images: array of all image URLs (already processed with getImageUrl) or undefined
+  if (product.images && product.images.length > 0) {
+    // Use the images array which contains all images (already processed URLs)
+    allImages = product.images;
+  } else if (product.image) {
+    // Fallback to single image if images array is not available
+    allImages = [product.image];
+  } else {
+    // Final fallback to placeholder
+    allImages = ['/placeholder-product.jpg'];
+  }
   
   const images = allImages;
+  
+  // Debug logging (remove in production)
+  if (import.meta.env.DEV) {
+    console.log('🔵 [ProductDetail] Product images:', {
+      productId: product.id,
+      productName: product.name,
+      hasImages: !!product.images,
+      imagesCount: product.images?.length || 0,
+      images: product.images,
+      hasImage: !!product.image,
+      image: product.image,
+      allImagesCount: allImages.length,
+      allImages: allImages
+    });
+  }
 
   const handleAddToCart = () => {
     addToCart(product);

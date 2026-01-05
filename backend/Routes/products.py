@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, send_from_directory, current_app
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from Main.app import db
 from Models.users import User
@@ -781,13 +781,102 @@ def delete_product(product_id):
         return jsonify({'error': 'Product not found'}), 404
     
     try:
+        # Check if product has associated orders
+        order_items_count = OrderItem.query.filter_by(product_id=product_id).count()
+        if order_items_count > 0:
+            return jsonify({
+                'error': f'Cannot delete product. It has {order_items_count} associated order item(s). Consider deactivating the product instead.',
+                'has_orders': True,
+                'order_items_count': order_items_count
+            }), 400
+        
+        # Delete all product images from Cloudinary before deleting the product
+        all_image_urls = []
+        
+        # Collect main_image_url if it exists
+        if product.main_image_url:
+            all_image_urls.append(product.main_image_url)
+        
+        # Collect all images from the images relationship
+        for img in product.images:
+            if img.image_url and img.image_url not in all_image_urls:
+                all_image_urls.append(img.image_url)
+        
+        # Delete images from Cloudinary (non-blocking - product will be deleted even if this fails)
+        deleted_cloudinary_count = 0
+        if all_image_urls:
+            try:
+                # Configure Cloudinary
+                cloudinary.config(
+                    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                    api_key=os.getenv('CLOUDINARY_API_KEY'),
+                    api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                )
+                
+                # Check if Cloudinary is configured
+                if all([os.getenv('CLOUDINARY_CLOUD_NAME'), 
+                       os.getenv('CLOUDINARY_API_KEY'), 
+                       os.getenv('CLOUDINARY_API_SECRET')]):
+                    import re
+                    for image_url in all_image_urls:
+                        if 'cloudinary.com' in image_url:
+                            try:
+                                # Extract public_id from Cloudinary URL
+                                # Cloudinary URLs format: 
+                                # https://res.cloudinary.com/{cloud_name}/image/upload/{transformations}/{public_id}.{format}
+                                # or: https://res.cloudinary.com/{cloud_name}/image/upload/v{version}/{public_id}.{format}
+                                # The public_id may include folder path like: guzone_products/{filename}
+                                
+                                # Match everything after /upload/ until the file extension
+                                match = re.search(r'/upload/(?:v\d+/)?(?:[^/]+/)*(.+?)(?:\.[^.]+)?$', image_url)
+                                if match:
+                                    # Get the full path after /upload/
+                                    full_path = re.search(r'/upload/(.+?)(?:\.[^.]+)?$', image_url)
+                                    if full_path:
+                                        public_id = full_path.group(1)
+                                        # Remove version prefix if present (v1234567890/)
+                                        public_id = re.sub(r'^v\d+/', '', public_id)
+                                        
+                                        # Ensure folder prefix is correct
+                                        if not public_id.startswith('guzone_products/'):
+                                            # Extract just the filename if folder is missing
+                                            filename = public_id.split('/')[-1]
+                                            public_id = f"guzone_products/{filename}"
+                                        
+                                        # Delete from Cloudinary (non-blocking)
+                                        try:
+                                            result = cloudinary.uploader.destroy(public_id)
+                                            if result.get('result') == 'ok':
+                                                deleted_cloudinary_count += 1
+                                            else:
+                                                print(f"Warning: Cloudinary deletion returned: {result.get('result')} for {public_id}")
+                                        except Exception as destroy_error:
+                                            print(f"Warning: Cloudinary destroy failed for {public_id}: {destroy_error}")
+                            except Exception as e:
+                                print(f"Warning: Could not delete image {image_url} from Cloudinary: {e}")
+            except Exception as e:
+                print(f"Warning: Error deleting images from Cloudinary: {e}")
+                # Continue with product deletion even if Cloudinary deletion fails
+        
+        # IMPORTANT: Delete the product from database regardless of Cloudinary deletion success/failure
+        # This ensures product deletion always succeeds even if Cloudinary cleanup fails
+        # The Cloudinary deletion above is non-blocking - any failures are logged but don't prevent product deletion
+        
+        # Delete the product (this will cascade delete ProductImage records due to cascade='all, delete-orphan')
         db.session.delete(product)
         db.session.commit()
-        return jsonify({'message': 'Product deleted successfully'}), 200
+        
+        return jsonify({
+            'message': 'Product deleted successfully',
+            'total_images': len(all_image_urls),
+            'cloudinary_images_deleted': deleted_cloudinary_count,
+            'note': 'Product deleted from database. Some Cloudinary images may not have been deleted if deletion failed.'
+        }), 200
     
     except Exception as e:
         db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+        print(f"Error deleting product: {e}")
+        return jsonify({'error': f'Failed to delete product: {str(e)}'}), 500
 
 def allowed_file(filename):
     """Check if file extension is allowed"""
@@ -851,11 +940,7 @@ def upload_product_image():
         
         return jsonify({
             'message': 'Image uploaded successfully to Cloudinary',
-            'image_url': image_url,
-            'public_id': upload_result.get('public_id'),
-            'format': upload_result.get('format'),
-            'width': upload_result.get('width'),
-            'height': upload_result.get('height')
+            'image_url': image_url
         }), 201
     
     except cloudinary.exceptions.Error as e:
@@ -864,16 +949,6 @@ def upload_product_image():
     except Exception as e:
         print(f"Image upload error: {e}")
         return jsonify({'error': f'Image upload failed: {str(e)}'}), 500
-
-@products_bp.route('/uploads/<filename>')
-@jwt_required(optional=True)
-def serve_uploaded_image(filename):
-    """Serve uploaded product images"""
-    # Add CORS headers for images
-    response = send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Methods', 'GET')
-    return response
 
 @products_bp.route('/<int:product_id>/images', methods=['POST'])
 @admin_required
@@ -921,16 +996,31 @@ def delete_product_image(product_id, image_id):
         return jsonify({'error': 'Image not found'}), 404
     
     try:
-        # Delete the physical file if it's a local upload
+        # Optionally delete from Cloudinary if it's a Cloudinary URL
         image_url = product_image.image_url
-        if image_url and image_url.startswith('/api/products/uploads/'):
-            filename = os.path.basename(image_url)
-            filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
-            if os.path.exists(filepath):
-                try:
-                    os.remove(filepath)
-                except Exception as e:
-                    print(f"Warning: Could not delete file {filepath}: {e}")
+        if image_url and 'cloudinary.com' in image_url:
+            try:
+                # Extract public_id from Cloudinary URL
+                # Cloudinary URLs format: https://res.cloudinary.com/{cloud_name}/image/upload/{version}/{public_id}.{format}
+                import re
+                match = re.search(r'/upload/(?:v\d+/)?(.+?)(?:\.[^.]+)?$', image_url)
+                if match:
+                    public_id = match.group(1)
+                    # Remove folder prefix if present
+                    if public_id.startswith('guzone_products/'):
+                        public_id = public_id.replace('guzone_products/', '')
+                    
+                    # Configure Cloudinary
+                    cloudinary.config(
+                        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                        api_key=os.getenv('CLOUDINARY_API_KEY'),
+                        api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                    )
+                    
+                    # Delete from Cloudinary
+                    cloudinary.uploader.destroy(f"guzone_products/{public_id}")
+            except Exception as e:
+                print(f"Warning: Could not delete image from Cloudinary: {e}")
         
         db.session.delete(product_image)
         db.session.commit()

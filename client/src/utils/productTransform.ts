@@ -58,14 +58,42 @@ export const getImageUrl = (imageUrl: string | null | undefined): string => {
  * Transform backend Product format to frontend ProductCard format
  */
 export const transformProduct = (backendProduct: BackendProduct): FrontendProduct => {
-  // Get main image URL, fallback to first image if no main_image_url
-  const mainImage = backendProduct.main_image_url || 
-    (backendProduct.images && backendProduct.images.length > 0 ? backendProduct.images[0].image_url : null);
+  // Get all image URLs from the images array (backend returns array of ProductImage objects)
+  const imageUrlsFromArray = backendProduct.images?.map(img => img.image_url).filter(url => url) || [];
   
-  // Get all image URLs
-  const allImages = backendProduct.images?.map(img => img.image_url) || [];
-  if (backendProduct.main_image_url && !allImages.includes(backendProduct.main_image_url)) {
-    allImages.unshift(backendProduct.main_image_url);
+  // Get main image URL - use main_image_url if provided, otherwise use first image from images array
+  let mainImage = backendProduct.main_image_url;
+  if (!mainImage && imageUrlsFromArray.length > 0) {
+    mainImage = imageUrlsFromArray[0];
+  }
+  
+  // Combine all images: main_image_url first (if exists and not duplicate), then images array
+  const allImages: string[] = [];
+  
+  // Add main_image_url first if it exists and is not already in the array
+  if (backendProduct.main_image_url && !imageUrlsFromArray.includes(backendProduct.main_image_url)) {
+    allImages.push(backendProduct.main_image_url);
+  }
+  
+  // Add all images from the images array
+  allImages.push(...imageUrlsFromArray);
+  
+  // If we have no images at all but have main_image_url, use it
+  if (allImages.length === 0 && backendProduct.main_image_url) {
+    allImages.push(backendProduct.main_image_url);
+  }
+  
+  // Debug logging (remove in production)
+  if (import.meta.env.DEV) {
+    console.log('🔵 [transformProduct] Image processing:', {
+      productId: backendProduct.id,
+      productName: backendProduct.name,
+      main_image_url: backendProduct.main_image_url,
+      imagesArrayLength: backendProduct.images?.length || 0,
+      imageUrlsFromArray,
+      allImagesCount: allImages.length,
+      allImages
+    });
   }
   
   // Extract price directly from backend - backend ALWAYS returns price as float

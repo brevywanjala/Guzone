@@ -60,7 +60,6 @@ def create_app(config_name='development'):
         app.config['JWT_REFRESH_COOKIE_PATH'] = '/'  # Path for refresh token cookie
         app.config['JWT_ACCESS_COOKIE_NAME'] = 'access_token_cookie'  # Name of the access token cookie
         app.config['JWT_ACCESS_COOKIE_PATH'] = '/'  # Path for access token cookie
-        app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads', 'products')
         app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
         app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     else:
@@ -81,7 +80,6 @@ def create_app(config_name='development'):
         app.config['JWT_REFRESH_COOKIE_PATH'] = '/'
         app.config['JWT_ACCESS_COOKIE_NAME'] = 'access_token_cookie'
         app.config['JWT_ACCESS_COOKIE_PATH'] = '/'
-        app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads', 'products')
         app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
         app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
     
