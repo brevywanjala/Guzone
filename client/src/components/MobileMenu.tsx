@@ -24,22 +24,10 @@ export function MobileMenu() {
       <SheetContent side="left" className="w-[280px]">
         <nav className="flex flex-col gap-4 mt-8">
           <Link
-            to="/suppliers"
-            className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors py-2"
-          >
-            {t("suppliers")}
-          </Link>
-          <Link
             to="/products"
             className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors py-2"
           >
             {t("products")}
-          </Link>
-          <Link
-            to="/how-it-works"
-            className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors py-2"
-          >
-            {t("howItWorks")}
           </Link>
           
           {isAuthenticated ? (

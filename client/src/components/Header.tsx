@@ -6,7 +6,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { CartDrawer } from "./CartDrawer";
 import { MobileMenu } from "./MobileMenu";
 import { LoginModal } from "./LoginModal";
-import { Package, User, LayoutDashboard, LogOut } from "lucide-react";
+import { User, LayoutDashboard, LogOut } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -30,9 +30,11 @@ export function Header() {
         <div className="flex items-center gap-2">
           <MobileMenu />
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80">
-              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
-            </div>
+            <img 
+              src="/Guzone_Logo.jpg" 
+              alt="Guzone Logo" 
+              className="h-8 w-auto sm:h-10"
+            />
             <span className="text-lg sm:text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Guzone
             </span>
@@ -40,14 +42,8 @@ export function Header() {
         </div>
 
         <nav className="hidden md:flex items-center gap-6">
-          <Link to="/suppliers" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors">
-            {t("suppliers")}
-          </Link>
           <Link to="/products" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors">
             {t("products")}
-          </Link>
-          <Link to="/how-it-works" className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors">
-            {t("howItWorks")}
           </Link>
         </nav>
 
