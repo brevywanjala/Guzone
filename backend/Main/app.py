@@ -24,9 +24,10 @@ def create_app(config_name='development'):
     if database_url:
         database_url = database_url.strip().strip('"').strip("'")
     
-    # Convert postgresql:// to postgresql+psycopg2:// for SQLAlchemy if needed
+    # Convert postgresql:// to postgresql+psycopg:// for SQLAlchemy if needed
+    # Using psycopg (psycopg3) which is compatible with Python 3.13
     if database_url and database_url.startswith('postgresql://'):
-        database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
+        database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
     
     # Debug logging for database URL (mask password for security)
     if database_url and database_url.startswith('postgresql'):
