@@ -9,17 +9,40 @@ export const getImageUrl = (imageUrl: string | null | undefined): string => {
     return '/placeholder-product.jpg';
   }
   
-  // If it's already a full URL (http/https), return as is
+  // If it's already a full URL (http/https) - includes Cloudinary URLs
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     return imageUrl;
   }
   
-  // If it's a local upload path, prepend the backend URL
+  // If it's a local upload path, construct the full backend URL
   if (imageUrl.startsWith('/api/products/uploads/') || imageUrl.startsWith('/products/uploads/')) {
-    const apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-    // Remove leading /api if present, then prepend the base URL
-    const cleanPath = imageUrl.startsWith('/api') ? imageUrl.replace('/api', '') : imageUrl;
-    return `${apiBaseUrl}${cleanPath}`;
+    let apiBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+    
+    // Remove trailing slash if present
+    apiBaseUrl = apiBaseUrl.replace(/\/$/, '');
+    
+    // If the path already starts with /api/products/uploads/
+    if (imageUrl.startsWith('/api/products/uploads/')) {
+      // apiBaseUrl might already include /api, so we need to handle both cases
+      // If apiBaseUrl ends with /api, use it as is, otherwise add /api
+      if (apiBaseUrl.endsWith('/api')) {
+        // Remove /api from the imageUrl since apiBaseUrl already has it
+        const pathWithoutApi = imageUrl.replace('/api', '');
+        return `${apiBaseUrl}${pathWithoutApi}`;
+      } else {
+        // apiBaseUrl doesn't have /api, so use imageUrl as is
+        return `${apiBaseUrl}${imageUrl}`;
+      }
+    }
+    
+    // If it starts with /products/uploads/, prepend /api
+    if (imageUrl.startsWith('/products/uploads/')) {
+      if (apiBaseUrl.endsWith('/api')) {
+        return `${apiBaseUrl}${imageUrl}`;
+      } else {
+        return `${apiBaseUrl}/api${imageUrl}`;
+      }
+    }
   }
   
   // If it starts with /, assume it's a relative path from the public folder

@@ -7,4 +7,5 @@ python-dotenv==1.0.0
 firebase-admin==6.5.0
 psycopg2-binary>=2.9.5
 gunicorn>=20.1.0
+cloudinary>=1.36.0
 

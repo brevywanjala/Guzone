@@ -9,6 +9,9 @@ from sqlalchemy import or_, func, case
 import uuid
 import os
 from werkzeug.utils import secure_filename
+import cloudinary
+import cloudinary.uploader
+import cloudinary.api
 
 products_bp = Blueprint('products', __name__)
 
@@ -794,7 +797,7 @@ def allowed_file(filename):
 @products_bp.route('/upload-image', methods=['POST'])
 @admin_required
 def upload_product_image():
-    """Upload a product image (admin only)"""
+    """Upload a product image to Cloudinary (admin only)"""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     
@@ -802,32 +805,75 @@ def upload_product_image():
     if file.filename == '':
         return jsonify({'error': 'No file selected'}), 400
     
-    if file and allowed_file(file.filename):
-        # Create upload directory if it doesn't exist
-        upload_folder = current_app.config['UPLOAD_FOLDER']
-        os.makedirs(upload_folder, exist_ok=True)
-        
-        # Generate secure filename
-        filename = secure_filename(file.filename)
-        # Add timestamp to avoid conflicts
-        from datetime import datetime
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
-        filename = f"{timestamp}_{filename}"
-        
-        filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
-        
-        # Return relative URL that can be served by Flask
-        image_url = f"/api/products/uploads/{filename}"
-        
-        return jsonify({'message': 'Image uploaded successfully', 'image_url': image_url}), 201
+    if not file or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type. Allowed types: png, jpg, jpeg, gif, webp'}), 400
     
-    return jsonify({'error': 'Invalid file type. Allowed types: png, jpg, jpeg, gif, webp'}), 400
+    try:
+        # Configure Cloudinary from environment variables
+        cloudinary.config(
+            cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+            api_key=os.getenv('CLOUDINARY_API_KEY'),
+            api_secret=os.getenv('CLOUDINARY_API_SECRET')
+        )
+        
+        # Check if Cloudinary is configured
+        if not all([os.getenv('CLOUDINARY_CLOUD_NAME'), 
+                   os.getenv('CLOUDINARY_API_KEY'), 
+                   os.getenv('CLOUDINARY_API_SECRET')]):
+            return jsonify({
+                'error': 'Cloudinary not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET environment variables.'
+            }), 500
+        
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        original_filename = secure_filename(file.filename)
+        filename_without_ext = os.path.splitext(original_filename)[0]
+        file_ext = os.path.splitext(original_filename)[1]
+        unique_filename = f"{timestamp}_{filename_without_ext}"
+        
+        # Upload to Cloudinary
+        # Read file into memory
+        file.seek(0)  # Reset file pointer
+        upload_result = cloudinary.uploader.upload(
+            file,
+            folder="guzone_products",
+            public_id=unique_filename,
+            resource_type="image",
+            overwrite=False,
+            invalidate=True  # Invalidate CDN cache
+        )
+        
+        # Get the secure URL from Cloudinary
+        image_url = upload_result.get('secure_url') or upload_result.get('url')
+        
+        if not image_url:
+            return jsonify({'error': 'Failed to get image URL from Cloudinary'}), 500
+        
+        return jsonify({
+            'message': 'Image uploaded successfully to Cloudinary',
+            'image_url': image_url,
+            'public_id': upload_result.get('public_id'),
+            'format': upload_result.get('format'),
+            'width': upload_result.get('width'),
+            'height': upload_result.get('height')
+        }), 201
+    
+    except cloudinary.exceptions.Error as e:
+        print(f"Cloudinary upload error: {e}")
+        return jsonify({'error': f'Cloudinary upload failed: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Image upload error: {e}")
+        return jsonify({'error': f'Image upload failed: {str(e)}'}), 500
 
 @products_bp.route('/uploads/<filename>')
+@jwt_required(optional=True)
 def serve_uploaded_image(filename):
     """Serve uploaded product images"""
-    return send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    # Add CORS headers for images
+    response = send_from_directory(current_app.config['UPLOAD_FOLDER'], filename)
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Methods', 'GET')
+    return response
 
 @products_bp.route('/<int:product_id>/images', methods=['POST'])
 @admin_required
