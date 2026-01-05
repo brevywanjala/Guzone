@@ -10,8 +10,16 @@ You can retry if any errors occur.
 """
 
 import sys
+import os
 import getpass
 import platform
+from dotenv import load_dotenv
+
+# Load environment variables from .env file in backend directory
+# Get the directory where this script is located
+script_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(script_dir, '.env')
+load_dotenv(env_path)
 
 # Import msvcrt for Windows password input with asterisks
 if platform.system() == 'Windows':
@@ -216,6 +224,20 @@ def get_user_input():
 
 def main():
     """Main function to create admin account interactively with retry capability."""
+    # Check DATABASE_URL before proceeding
+    database_url = os.getenv('DATABASE_URL')
+    if database_url:
+        # Strip quotes if present
+        database_url = database_url.strip().strip('"').strip("'")
+        if database_url.startswith('postgresql'):
+            import re
+            masked_url = re.sub(r':([^:@]+)@', r':****@', database_url)
+            print(f"Database URL (masked): {masked_url}\n")
+        else:
+            print(f"Database URL: {database_url}\n")
+    else:
+        print("⚠️  Warning: DATABASE_URL not found in environment variables\n")
+    
     while True:
         try:
             # Get user input
@@ -256,6 +278,16 @@ def main():
             sys.exit(0)
         except Exception as e:
             print(f"\n✗ Unexpected error: {str(e)}\n")
+            # Show database URL info if it's a database connection error
+            if 'database' in str(e).lower() or 'sqlalchemy' in str(e).lower() or 'url' in str(e).lower():
+                db_url = os.getenv('DATABASE_URL', 'NOT SET')
+                if db_url and db_url != 'NOT SET':
+                    import re
+                    masked = re.sub(r':([^:@]+)@', r':****@', db_url.strip().strip('"').strip("'"))
+                    print(f"   Current DATABASE_URL (masked): {masked}")
+                else:
+                    print(f"   DATABASE_URL is not set in environment variables")
+                    print(f"   Make sure you have a .env file in the backend directory")
             retry = input("Would you like to try again? (y/n): ").strip().lower()
             if retry not in ['y', 'yes']:
                 print("\nExiting...\n")
