@@ -41,6 +41,7 @@ export default function CustomerDashboard() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [isProfileComplete, setIsProfileComplete] = useState(false);
   const [profileData, setProfileData] = useState({
     phone: "",
     address: "",
@@ -78,6 +79,7 @@ export default function CustomerDashboard() {
     try {
       // Check if profile is complete
       const profileCheck = await authApi.checkProfileComplete();
+      setIsProfileComplete(profileCheck.is_complete);
       if (!profileCheck.is_complete) {
         setProfileDialogOpen(true);
         // Pre-fill with existing data if available
@@ -114,14 +116,17 @@ export default function CustomerDashboard() {
 
     try {
       await customersApi.updateProfile(profileData);
-      toast({
-        title: "Success",
-        description: "Profile updated successfully!",
-      });
-      setProfileDialogOpen(false);
       // Re-check profile to ensure it's complete
       const profileCheck = await authApi.checkProfileComplete();
-      if (!profileCheck.is_complete) {
+      setIsProfileComplete(profileCheck.is_complete);
+      
+      if (profileCheck.is_complete) {
+        toast({
+          title: "Success",
+          description: "Profile updated successfully!",
+        });
+        setProfileDialogOpen(false);
+      } else {
         toast({
           title: "Warning",
           description: "Please fill in all required fields",
@@ -567,8 +572,30 @@ export default function CustomerDashboard() {
       />
 
       {/* Profile Completion Dialog */}
-      <Dialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen}>
-        <DialogContent className="sm:max-w-md max-h-[95vh] flex flex-col overflow-hidden p-0">
+      <Dialog 
+        open={profileDialogOpen} 
+        onOpenChange={(open) => {
+          // Only allow closing if profile is complete
+          if (!open && isProfileComplete) {
+            setProfileDialogOpen(false);
+          }
+        }}
+      >
+        <DialogContent 
+          className={`sm:max-w-md max-h-[95vh] flex flex-col overflow-hidden p-0 ${!isProfileComplete ? '[&>button]:hidden' : ''}`}
+          onInteractOutside={(e) => {
+            // Prevent closing by clicking outside if profile is incomplete
+            if (!isProfileComplete) {
+              e.preventDefault();
+            }
+          }}
+          onEscapeKeyDown={(e) => {
+            // Prevent closing with Escape key if profile is incomplete
+            if (!isProfileComplete) {
+              e.preventDefault();
+            }
+          }}
+        >
           <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
             <DialogTitle>Complete Your Profile</DialogTitle>
             <DialogDescription>
