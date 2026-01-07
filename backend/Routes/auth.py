@@ -359,10 +359,13 @@ def google_auth():
             decoded_token = firebase_auth.verify_id_token(firebase_token)
         except ValueError as e:
             # Firebase not initialized
-            return jsonify({
-                'error': 'Firebase Admin SDK not configured',
-                'details': 'Please set FIREBASE_CREDENTIALS_PATH environment variable'
-            }), 500
+            if 'Firebase app' in str(e) or 'not initialized' in str(e).lower():
+                return jsonify({
+                    'error': 'Firebase Admin SDK not configured',
+                    'details': 'Please set FIREBASE_CREDENTIALS_JSON environment variable with the service account JSON content, or set FIREBASE_CREDENTIALS_PATH with the path to the service account file',
+                    'help': 'For Railway: Set FIREBASE_CREDENTIALS_JSON as an environment variable with the entire JSON content from ServiceAccountKey.json as a single-line string'
+                }), 500
+            raise
         except Exception as e:
             return jsonify({'error': 'Invalid Firebase token', 'details': str(e)}), 401
         

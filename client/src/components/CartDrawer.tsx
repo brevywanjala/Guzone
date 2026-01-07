@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -24,6 +25,7 @@ export function CartDrawer() {
   const { isAuthenticated } = useAuth();
   const { t } = useLanguage();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
@@ -160,10 +162,15 @@ export function CartDrawer() {
   const handleOrderComplete = () => {
     clearCart();
     setCurrentOrder(null);
+    setShowPayment(false);
     toast({
       title: "Order Submitted",
-      description: "Your order has been submitted successfully!",
+      description: "Your order has been submitted successfully! Redirecting to your dashboard...",
     });
+    // Redirect to customer dashboard to complete required info
+    setTimeout(() => {
+      navigate("/customer/dashboard", { replace: true });
+    }, 1000);
   };
 
   return (
