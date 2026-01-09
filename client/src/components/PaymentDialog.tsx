@@ -67,8 +67,8 @@ export function PaymentDialog({ open, onOpenChange, order, onOrderComplete }: Pa
     }
   };
 
-  const mpesaPaybill = "123456";
-  const accountNumber = order?.order_number || "";
+  const mpesaPaybill = "200999";
+  const accountNumber = "0001060123377";
   const contactWhatsApp = "+254710168286";
   const contactEmail = "info@guzones.com";
 
